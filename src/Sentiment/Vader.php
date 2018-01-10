@@ -60,15 +60,15 @@ class Vader
     
     // check for special case idioms using a sentiment-laden keyword known to VADER
     CONST SPECIAL_CASE_IDIOMS = [
-        "the shit"=> 3, "the bomb"=>3, "bad ass"=> 1.5, "yeah right"=> -2,
+        "the shit"=> 3, "the bomb"=> 3, "bad ass"=> 1.5, "yeah right"=> -2,
         "cut the mustard"=> 2, "kiss of death"=> -1.5, "hand to mouth"=> -2
     ];
     
     /**
-     * The dataset loaded from the flat file
+     * The lexicon dataset loaded from the flat file
      * @var array 
      */
-    protected $dataSet = [];
+    protected $lexicon = [];
     
     /**
      *      
@@ -137,24 +137,88 @@ class Vader
         return $scalar;
     }
     
+    /**
+     * Return a float for sentiment strength based on the input text.
+     * Positive values are positive valence, negative value are negative valence.
+     * @param array $tokens
+     */
     public function getPolarityScores(array $tokens) : array
     {
+        $sentiments = [];
+        for($index = 0; $index < count($tokens); $index++)
+        {
+            $valence = 0.0;
+            $lcToken = strtolower($tokens[$index]);
+                   
+            if( $lcToken == "kind" && strtolower($tokens[$index+1]) == 'of' ||
+                isset(self::BOOSTER_DICT[$lcToken]) ) {   
+                
+                $sentiments[] = $valence;
+                continue;
+            }
+
+            $sentiments = $this->sentimentValence($valence, sentitext, $token, $index, $sentiments);
+        }
+
+        $sentiments = $this->butCheck($tokens, $sentiments);
         
+        return $this->scoreValence($sentiments, $tokens);
+    }
+    
+    public function scoreValence(array $sentiments, array $tokens)
+    {
+        if ( !empty($sentiments))
+            $sentimentSum = float(sum($sentiments));
+            // compute and add emphasis from punctuation in text
+            punct_emph_amplifier = self._punctuation_emphasis($sentimentSum, $tokens);
+            if ($sentimentSum > 0) {
+                $sentimentSum += punct_emph_amplifier;
+            } elseif ($sentimentSum < 0) {
+                $sentimentSum -= punct_emph_amplifier;
+            }
+
+            $compound = $this->normalize($sentimentSum);
+            // discriminate between positive, negative and neutral sentiment scores
+            ($posSum, $negSum, $neuCount) = list($this->siftSentimentScores($sentiments));
+
+            if ($posSum > math.fabs($negSum))
+                pos_sum += (punct_emph_amplifier)
+            elif pos_sum < math.fabs(neg_sum):
+                neg_sum -= (punct_emph_amplifier)
+
+            total = pos_sum + math.fabs(neg_sum) + neu_count
+            pos = math.fabs(pos_sum / total)
+            neg = math.fabs(neg_sum / total)
+            neu = math.fabs(neu_count / total)
+
+        else {
+            $compound = 0.0;
+            $pos = 0.0;
+            $neg = 0.0;
+            $neu = 0.0;
+        }
+
+        return = [
+            "neg" : round(neg, 3),
+            "neu" : round(neu, 3),
+            "pos" : round(pos, 3),
+            "compound" : round(compound, 4)
+        ];
     }
     
     public function getSentimentValence(float $valence, $sentitext, array $tokens, int $index, array $sentiments)
     {
-        is_cap_diff = sentitext.is_cap_diff
+        $isCapDiff = $this->allCapDifferential($tokens);
         $lcToken = strtolower($tokens[$index]);
         $ucToken = strtoupper($tokens[$index]);
-        if(isset($this->getDataSet()[$lcToken]))
+        if(isset($this->getLexicon()[$lcToken]))
         {
             //get the sentiment valence
-            $valence = $this->getDataSet()[$lcToken];
+            $valence = $this->getLexicon()[$lcToken];
 
             //check if sentiment laden word is in ALL CAPS (while others aren't)
-            if $ucToken and is_cap_diff:
-                if $valence > 0 {
+            if ($ucToken and $isCapDiff) { 
+                if ($valence > 0) {
                     $valence += self::C_INCR;
                 } else {
                     $valence -= self::C_INCR;
@@ -163,13 +227,13 @@ class Vader
 
             for($startIndex = 0; $startIndex <= 3; $startIndex++)
             {
-                if ($index > $startIndex && !isset($this->getDataSet()[ strtolower($tokens[$index-($startIndex+1)])]
+                if ($index > $startIndex && !isset($this->getLexicon()[ strtolower($tokens[$index-($startIndex+1)])]))
                 {
                     // dampen the scalar modifier of preceding words and emoticons
                     // (excluding the ones that immediately preceed the item) based
                     // on their distance from the current item.
-                    $s = $this->scalarIncDec($tokens[$index-($startIndex+1)], $valence, is_cap_diff)
-                    if $startIndex == 1 and s != 0 {
+                    $s = $this->scalarIncDec($tokens[$index-($startIndex+1)], $valence, $isCapDiff);
+                    if ($startIndex == 1 and $s != 0) {
                         $s *= 0.95;
                     } elseif ($startIndex == 2 and s != 0 ) {
                         $s *= 0.9;
@@ -203,22 +267,18 @@ class Vader
         {
             if(isset(self::SPECIAL_CASE_IDIOMS[$ngram])) {
                 $valence = self::SPECIAL_CASE_IDIOMS[$ngram];
+                break;
             }
         }
 
-        for seq in sequences:
-            if seq in SPECIAL_CASE_IDIOMS:
-                valence = SPECIAL_CASE_IDIOMS[seq]
-                break
-
         if (count($tokens)-1 > $index && isset(self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 2))])) {
-            $valence = self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 2));            
-        } elseif( count($tokens)-1 > $index+1 && isset(self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 3))]) )) {
-            $valence = self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 3));
+            $valence = self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 2))];            
+        } elseif( count($tokens)-1 > $index+1 && isset(self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 3))]) ) {
+            $valence = self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 3))];
         }
 
         // check for booster/dampener bi-grams such as 'sort of' or 'kind of'
-        if(isset(self::BOOSTER_DICT[$bigrams[0]] || isset(self::BOOSTER_DICT[$bigrams[1]]) {
+        if(isset(self::BOOSTER_DICT[$bigrams[0]]) || isset(self::BOOSTER_DICT[$bigrams[1]])) {
             $valence += self::B_DECR;
         }
         return $valence;
@@ -234,7 +294,7 @@ class Vader
      */
     public function leastCheck(float $valence, array $tokens, int $index) : float
     {
-        $inLexicon = isset($this->getDataSet()[strtolower($tokens[$index-1])]);
+        $inLexicon = isset($this->getLexicon()[strtolower($tokens[$index-1])]);
         
         if($inLexicon) {
             return $valence;                       
@@ -319,13 +379,13 @@ class Vader
      * Loads the flat file data set
      * @return array
      */
-    public function getDataSet() : array
+    public function getLexicon() : array
     {
         if(!file_exists($this->getTxtFilePath())) {
             throw new \RuntimeException('Package vader_lexicon must be installed, php textconsole pta:install:package vader_lexicon');
         }
         
-        if(empty($this->dataSet)) {
+        if(empty($this->lexicon)) {
             $fh = fopen($this->getTxtFilePath(), "r");
             while (($rows[] = fgetcsv($fh, 4096, "\t")) !== FALSE);
             
@@ -333,7 +393,7 @@ class Vader
             
             foreach($rows as $row)
             {
-                $this->dataSet[$row[0]] = $row[1];
+                $this->lexicon[$row[0]] = $row[1];
             }            
         }
         return $this->dataSet;

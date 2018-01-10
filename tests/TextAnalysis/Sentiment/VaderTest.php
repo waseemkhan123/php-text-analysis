@@ -64,5 +64,13 @@ class VaderTest extends \PHPUnit_Framework_TestCase
         $vader = new Vader;        
         
     }
+    
+    public function testIdiomsCheck()
+    {
+        $vader = new Vader;        
+        $tokens = ['the', 'weather', 'was', 'the', 'bomb', 'today'];
+        $vader->idiomsCheck($valence, $tokens, $index)
+        
+    }
         
 }
