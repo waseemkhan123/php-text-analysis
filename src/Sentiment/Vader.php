@@ -149,73 +149,71 @@ class Vader
         {
             $valence = 0.0;
             $lcToken = strtolower($tokens[$index]);
-                   
-            if( $lcToken == "kind" && strtolower($tokens[$index+1]) == 'of' ||
+            if( $lcToken === "kind" && strtolower($tokens[$index+1]) === 'of' ||
                 isset(self::BOOSTER_DICT[$lcToken]) ) {   
                 
                 $sentiments[] = $valence;
-                continue;
+            } else {
+                $sentiments[] = $this->getSentimentValence($valence, $tokens, $index, $sentiments);
             }
-
-            $sentiments = $this->sentimentValence($valence, sentitext, $token, $index, $sentiments);
         }
 
-        $sentiments = $this->butCheck($tokens, $sentiments);
-        
+        $sentiments = $this->butCheck($tokens, $sentiments);        
         return $this->scoreValence($sentiments, $tokens);
     }
     
     public function scoreValence(array $sentiments, array $tokens)
     {
-        if ( !empty($sentiments))
-            $sentimentSum = float(sum($sentiments));
+        if ( !empty($sentiments)) {
+            $sentimentSum = array_sum($sentiments);
             // compute and add emphasis from punctuation in text
-            punct_emph_amplifier = self._punctuation_emphasis($sentimentSum, $tokens);
+            $punctAmplifier = $this->boostExclamationPoints($tokens) + $this->boostQuestionMarks($tokens);
             if ($sentimentSum > 0) {
-                $sentimentSum += punct_emph_amplifier;
+                $sentimentSum += $punctAmplifier;
             } elseif ($sentimentSum < 0) {
-                $sentimentSum -= punct_emph_amplifier;
+                $sentimentSum -= $punctAmplifier;
             }
 
             $compound = $this->normalize($sentimentSum);
             // discriminate between positive, negative and neutral sentiment scores
-            ($posSum, $negSum, $neuCount) = list($this->siftSentimentScores($sentiments));
+            list($posSum, $negSum, $neuCount) = $this->siftSentimentScores($sentiments);
+            
+            if ($posSum > abs($negSum)) {
+                $posSum += $punctAmplifier;
+            } elseif($posSum < abs($negSum)) {
+                $negSum -= $punctAmplifier;
+            }
 
-            if ($posSum > math.fabs($negSum))
-                pos_sum += (punct_emph_amplifier)
-            elif pos_sum < math.fabs(neg_sum):
-                neg_sum -= (punct_emph_amplifier)
+            $total = $posSum + abs($negSum) + $neuCount;
+            $pos = abs($posSum / $total);
+            $neg = abs($negSum / $total);
+            $neu = abs($neuCount / $total);
 
-            total = pos_sum + math.fabs(neg_sum) + neu_count
-            pos = math.fabs(pos_sum / total)
-            neg = math.fabs(neg_sum / total)
-            neu = math.fabs(neu_count / total)
-
-        else {
+        } else {
             $compound = 0.0;
             $pos = 0.0;
             $neg = 0.0;
             $neu = 0.0;
         }
 
-        return = [
-            "neg" : round(neg, 3),
-            "neu" : round(neu, 3),
-            "pos" : round(pos, 3),
-            "compound" : round(compound, 4)
+        return [
+            "neg" => round($neg, 3),
+            "neu" => round($neu, 3),
+            "pos" => round($pos, 3),
+            "compound" => round($compound, 4)
         ];
     }
     
-    public function getSentimentValence(float $valence, $sentitext, array $tokens, int $index, array $sentiments)
+    public function getSentimentValence(float $valence, array $tokens, int $index)
     {
         $isCapDiff = $this->allCapDifferential($tokens);
         $lcToken = strtolower($tokens[$index]);
         $ucToken = strtoupper($tokens[$index]);
+        
         if(isset($this->getLexicon()[$lcToken]))
         {
             //get the sentiment valence
             $valence = $this->getLexicon()[$lcToken];
-
             //check if sentiment laden word is in ALL CAPS (while others aren't)
             if ($ucToken and $isCapDiff) { 
                 if ($valence > 0) {
@@ -235,7 +233,7 @@ class Vader
                     $s = $this->scalarIncDec($tokens[$index-($startIndex+1)], $valence, $isCapDiff);
                     if ($startIndex == 1 and $s != 0) {
                         $s *= 0.95;
-                    } elseif ($startIndex == 2 and s != 0 ) {
+                    } elseif ($startIndex == 2 and $s != 0 ) {
                         $s *= 0.9;
                     }
                     $valence += $s;
@@ -253,9 +251,9 @@ class Vader
                 }
                 $valence = $this->leastCheck($valence, $tokens, $index);
             }
-            $sentiments[] = $valence;
+
         }
-        return $sentiments;
+        return $valence;
     }
     
     public function idiomsCheck(float $valence, array $tokens, int $index)
@@ -271,16 +269,12 @@ class Vader
             }
         }
 
-        if (count($tokens)-1 > $index && isset(self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 2))])) {
-            $valence = self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 2))];            
-        } elseif( count($tokens)-1 > $index+1 && isset(self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 3))]) ) {
-            $valence = self::SPECIAL_CASE_IDIOMS[ngrams(array_slice($index, 3))];
+        if (count($tokens)-1 > $index && isset(self::SPECIAL_CASE_IDIOMS[$bigrams[0]])) {
+            $valence = self::SPECIAL_CASE_IDIOMS[$bigrams[0]];            
+        } elseif( count($tokens)-1 > $index+1 && isset(self::SPECIAL_CASE_IDIOMS[$trigrams[0]]) ) {
+            $valence = self::SPECIAL_CASE_IDIOMS[$trigrams[0]];
         }
 
-        // check for booster/dampener bi-grams such as 'sort of' or 'kind of'
-        if(isset(self::BOOSTER_DICT[$bigrams[0]]) || isset(self::BOOSTER_DICT[$bigrams[1]])) {
-            $valence += self::B_DECR;
-        }
         return $valence;
     }
     
@@ -351,8 +345,9 @@ class Vader
         $neuCount = 0;
         foreach($sentimentScores as $sentimentScore)
         {
+            
             if($sentimentScore > 0) {
-                $posSum += $sentimentScore+1; // compensates for neutral words that are counted as 1
+                $posSum += $sentimentScore + 1; // compensates for neutral words that are counted as 1
             } elseif ($sentimentScore < 0) {
                 $negSum += $sentimentScore-1; // when used with math.fabs(), compensates for neutrals
             } else { 
@@ -396,7 +391,7 @@ class Vader
                 $this->lexicon[$row[0]] = $row[1];
             }            
         }
-        return $this->dataSet;
+        return $this->lexicon;
     }
     
     public function boostExclamationPoints(array $tokens) : float
@@ -412,7 +407,7 @@ class Vader
     
     public function neverCheck(float $valence, array $tokens, int $startIndex, int $index)
     {
-        if($startIndex == 0 && $this->isNegated($tokens[$index-1])) {
+        if($startIndex == 0 && $this->isNegated([$tokens[$index-1]])) {
             $valence *= self::N_SCALAR;
         } elseif($startIndex == 1) {
             if ($tokens[$index-2] == "never" &&
@@ -421,7 +416,7 @@ class Vader
                 
                 $valence *= 1.5;
             }
-            elseif($this->isNegated($tokens[$index-($startIndex+1)])) {
+            elseif($this->isNegated([$tokens[$index-($startIndex+1)]])) {
                 
                 $valence *= self::N_SCALAR;
             }
@@ -431,7 +426,7 @@ class Vader
                ($tokens[$index-1] == "so" || $tokens[$index-1] == "this")) {
                 
                 $valence *= 1.25;
-            } elseif ($this->isNegated($tokens[$index-($startIndex+1)])) {
+            } elseif ($this->isNegated([$tokens[$index-($startIndex+1)]])) {
                 $valence *= self::N_SCALAR;
             }
         }
@@ -463,7 +458,7 @@ class Vader
     
     public function __destruct() 
     {
-        unset($this->dataSet);
+        unset($this->lexicon);
     }
         
 }
